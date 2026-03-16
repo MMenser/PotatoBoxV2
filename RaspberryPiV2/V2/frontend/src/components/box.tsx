@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import DataGraph from "./datagraph";
 import axios from "axios";
 import Schedule from "./schedule";
@@ -32,12 +32,13 @@ function Box({ id }: BoxProps) {
   const [customTime, setCustomTime] = useState("");
   const [isCustom, setIsCustom] = useState(false);
   const [lastReceived, setLastReceived] = useState<string>("--");
+  const [lastTimestamp, setLastTimestamp] = useState<number | null>(null);
   const [inputDelta, setInputDelta] = useState(0);
+  const [deltaMsg, setDeltaMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [sensor1, setSensor1] = useState(0.0);
   const [sensor2, setSensor2] = useState(0.0);
   const [sensor3, setSensor3] = useState(0.0);
   const [sensor4, setSensor4] = useState(0.0);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const calculateTimeAgo = (timestamp: number): string => {
     const date = new Date(timestamp * 1000);
@@ -67,7 +68,10 @@ function Box({ id }: BoxProps) {
       setSensor2(latest._sensor2);
       setSensor3(latest._sensor3);
       setSensor4(latest._sensor4);
-      if (latest._timestamp) setLastReceived(calculateTimeAgo(latest._timestamp));
+      if (latest._timestamp) {
+        setLastReceived(calculateTimeAgo(latest._timestamp));
+        setLastTimestamp(latest._timestamp);
+      }
     } catch (err) {
       console.error("Error fetching box data:", err);
     }
@@ -111,18 +115,19 @@ function Box({ id }: BoxProps) {
 
   const changeDelta = async () => {
     if (isNaN(inputDelta) || inputDelta < 0 || inputDelta > 30) {
-      alert("Delta must be a number between 0 and 30.");
+      setDeltaMsg({ text: "Delta must be between 0 and 30.", ok: false });
       return;
     }
     try {
       const roundedDelta = Math.round(inputDelta);
-      const res = await axios.post(`${route}changeDelta/${id}/${roundedDelta}`);
-      console.log("Response:", res.data);
+      await axios.post(`${route}changeDelta/${id}/${roundedDelta}`);
       setDelta(inputDelta);
+      setDeltaMsg({ text: "Delta updated successfully.", ok: true });
     } catch (err) {
       console.error("Error updating delta:", err);
-      alert("Failed to update delta. Check console for more info.");
+      setDeltaMsg({ text: "Failed to update delta.", ok: false });
     }
+    setTimeout(() => setDeltaMsg(null), 4000);
   };
 
   useEffect(() => {
@@ -133,123 +138,149 @@ function Box({ id }: BoxProps) {
     return () => clearInterval(interval);
   }, [id]);
 
+  const panelHeader = (label: string, right?: React.ReactNode) => (
+    <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+      <div className="flex items-center gap-2">
+        <div className="w-0.5 h-4 bg-cyan-400" />
+        <span className="text-cyan-400 text-xs tracking-widest font-mono">{label}</span>
+      </div>
+      {right}
+    </div>
+  );
+
   return (
-    <div className="w-full h-full p-5 bg-black border border-white">
-      <h2 className="text-xl text-white font-bold text-center mb-4">Box {id}</h2>
+    <div className="flex flex-col h-full w-full gap-2 bg-slate-950 text-white">
 
-      <div className="flex flex-row gap-6">
+      {/* Header bar */}
+      {(() => {
+        const isOnline = lastTimestamp !== null && (Date.now() / 1000 - lastTimestamp) < 300;
+        return (
+          <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border border-slate-700 rounded flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-400" : "bg-red-500"}`}
+                  style={{ boxShadow: isOnline ? "0 0 6px #4ade80" : "0 0 6px #ef4444" }}
+                />
+                <span className={`text-xs tracking-widest font-mono ${isOnline ? "text-green-400" : "text-red-400"}`}>
+                  {isOnline ? "ONLINE" : "OFFLINE"}
+                </span>
+              </div>
+              <span className="text-slate-600 text-xs">|</span>
+              <span className="text-white font-mono font-bold tracking-wide">BOX {id}</span>
+            </div>
+          </div>
+        );
+      })()}
 
-        {/* Left: controls + stats */}
-        <div className="flex flex-col space-y-2 min-w-fit">
+      {/* Middle row: Parameters + Live Data + Scheduler */}
+      <div className="flex gap-2 flex-shrink-0">
 
-          {/* Export */}
-          <div className="flex flex-row items-center space-x-2">
-            <select
-              value={isCustom ? "custom" : exportTimeLimit}
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value === "custom") {
-                  setIsCustom(true);
-                  setExportTimeLimit(0);
-                } else {
-                  setIsCustom(false);
-                  setExportTimeLimit(Number(value));
-                }
-              }}
-              className="w-28 bg-gray-700 text-white rounded px-2 py-1"
-            >
-              <option value={30}>Last 30 Min</option>
-              <option value={720}>Last 12 Hr</option>
-              <option value={99}>All</option>
-              <option value="custom">Custom...</option>
-            </select>
+        {/* Parameters panel */}
+        <div className="bg-slate-900 border border-slate-700 rounded p-3 flex flex-col gap-3" style={{ minWidth: 200 }}>
+          {panelHeader("PARAMETERS")}
+
+          <div className="flex flex-col gap-1">
+            <span className="text-slate-500 text-xs font-mono">EXPORT RANGE</span>
+            <div className="flex gap-1">
+              <select
+                value={isCustom ? "custom" : exportTimeLimit}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === "custom") { setIsCustom(true); setExportTimeLimit(0); }
+                  else { setIsCustom(false); setExportTimeLimit(Number(value)); }
+                }}
+                className="bg-slate-800 text-white text-xs border border-slate-700 rounded px-2 py-1 flex-1 font-mono"
+              >
+                <option value={30}>Last 30 Min</option>
+                <option value={720}>Last 12 Hr</option>
+                <option value={99}>All</option>
+                <option value="custom">Custom...</option>
+              </select>
+              <button onClick={exportData} className="bg-cyan-800 hover:bg-cyan-700 text-white text-xs px-3 py-1 rounded font-mono transition-colors">
+                EXPORT
+              </button>
+            </div>
             {isCustom && (
               <input
-                type="number"
-                min={1}
-                placeholder="Minutes"
-                value={customTime}
-                onChange={(e) => {
-                  setCustomTime(e.target.value);
-                  setExportTimeLimit(Number(e.target.value));
-                }}
-                className="bg-gray-700 text-white rounded px-2 py-1 w-28 text-center"
+                type="number" min={1} placeholder="Minutes" value={customTime}
+                onChange={(e) => { setCustomTime(e.target.value); setExportTimeLimit(Number(e.target.value)); }}
+                className="bg-slate-800 text-white text-xs border border-slate-700 rounded px-2 py-1 text-center font-mono"
               />
             )}
-            <button
-              type="button"
-              onClick={exportData}
-              className="w-28 text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-3 py-2"
-            >
-              Export
-            </button>
           </div>
 
-          {/* Change Delta */}
-          <div className="flex flex-row items-center space-x-2">
-            <input
-              type="number"
-              step="1.0"
-              value={inputDelta}
-              onChange={(e) => setInputDelta(parseFloat(e.target.value))}
-              className="bg-gray-700 text-white rounded px-2 py-1 w-28 text-center"
-            />
-            <button
-              type="button"
-              onClick={changeDelta}
-              className="w-28 text-white bg-blue-700 hover:bg-blue-800 font-medium rounded-lg text-sm px-3 py-2"
-            >
-              Set Delta
-            </button>
+          <div className="flex flex-col gap-1">
+            <span className="text-slate-500 text-xs font-mono">DELTA (°F)</span>
+            <div className="flex gap-1">
+              <input
+                type="number" step="1.0" value={inputDelta}
+                onChange={(e) => setInputDelta(parseFloat(e.target.value))}
+                className="bg-slate-800 text-white text-xs border border-slate-700 rounded px-2 py-1 w-16 text-center font-mono"
+              />
+              <button onClick={changeDelta} className="bg-cyan-800 hover:bg-cyan-700 text-white text-xs px-3 py-1 rounded font-mono transition-colors flex-1">
+                APPLY
+              </button>
+            </div>
+            {deltaMsg && (
+              <span className={`text-xs font-mono ${deltaMsg.ok ? "text-green-400" : "text-red-400"}`}>
+                {deltaMsg.text}
+              </span>
+            )}
           </div>
+        </div>
 
-          {/* Stats */}
-          <div className="mt-1 flex flex-col space-y-1 bg-gray-900 rounded-lg p-3">
+        {/* Live Data panel */}
+        <div className="bg-slate-900 border border-slate-700 rounded p-3 flex-1">
+          {panelHeader("INSTANTANEOUS DATA",
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500 text-xs font-mono">LAST UPDATE</span>
+              <span className="text-white font-mono font-bold text-sm">{lastReceived}</span>
+            </div>
+          )}
+          <div className="grid grid-cols-4 gap-2">
             {[
-              { label: "Last Received", value: lastReceived, color: "text-yellow-400" },
-              { label: "Average", value: `${averageTemperature} °F`, color: "text-green-400" },
-              { label: "Ambient", value: `${ambientTemperature} °F`, color: "text-green-400" },
-              { label: "Delta", value: `${delta} °F`, color: "text-green-400" },
-              { label: "Voltage", value: `${currentVoltage} V`, color: "text-green-400" },
-              { label: "Sensor 1", value: `${sensor1} °F`, color: "text-green-400" },
-              { label: "Sensor 2", value: `${sensor2} °F`, color: "text-green-400" },
-              { label: "Sensor 3", value: `${sensor3} °F`, color: "text-green-400" },
-              { label: "Sensor 4", value: `${sensor4} °F`, color: "text-green-400" },
-            ].map(({ label, value, color }) => (
-              <div key={label} className="flex flex-row justify-between space-x-6">
-                <p className="text-gray-400 text-sm">{label}</p>
-                <p className={`text-sm font-mono ${color}`}>{value}</p>
+              { label: "AVG TEMP", value: averageTemperature, unit: "°F", color: "text-green-400", glow: "#4ade80" },
+              { label: "AMBIENT",  value: ambientTemperature, unit: "°F", color: "text-green-400", glow: "#4ade80" },
+              { label: "DELTA",    value: delta,              unit: "°F", color: "text-green-400", glow: "#4ade80" },
+              { label: "VOLTAGE",  value: currentVoltage,     unit: "V",  color: "text-yellow-400", glow: "#facc15" },
+              { label: "SENSOR 1", value: sensor1,            unit: "°F", color: "text-cyan-400",  glow: "#22d3ee" },
+              { label: "SENSOR 2", value: sensor2,            unit: "°F", color: "text-cyan-400",  glow: "#22d3ee" },
+              { label: "SENSOR 3", value: sensor3,            unit: "°F", color: "text-cyan-400",  glow: "#22d3ee" },
+              { label: "SENSOR 4", value: sensor4,            unit: "°F", color: "text-cyan-400",  glow: "#22d3ee" },
+            ].map(({ label, value, unit, color, glow }) => (
+              <div key={label} className="bg-slate-950 border border-slate-800 rounded p-3">
+                <p className="text-slate-500 text-xs font-mono mb-1">{label}</p>
+                <p className={`text-2xl font-mono font-bold ${color}`} style={{ textShadow: `0 0 12px ${glow}` }}>
+                  {value}
+                  <span className="text-sm text-slate-400 ml-1 font-normal">{unit}</span>
+                </p>
               </div>
             ))}
           </div>
-
-          {/* Schedule toggle button + expandable panel */}
-          <div className="border border-gray-700 rounded-lg overflow-hidden">
-            <button
-              onClick={() => setScheduleOpen((prev) => !prev)}
-              className="w-full flex items-center justify-between px-3 py-2 bg-gray-900 text-white text-sm font-bold tracking-widest uppercase hover:bg-gray-800 transition-colors"
-            >
-              <span>Voltage Schedule</span>
-              <span className="text-gray-400">{scheduleOpen ? "▲" : "▼"}</span>
-            </button>
-            {scheduleOpen && (
-              <div className="border-t border-gray-700">
-                <Schedule boxId={id} />
-              </div>
-            )}
-          </div>
-
         </div>
 
-        {/* Right: graphs */}
-        <div className="flex flex-col gap-2 flex-1 min-w-0">
-          <div>
-            <DataGraph id={id} whichGraph={0} />
-          </div>
-          <div>
-            <DataGraph id={id} whichGraph={1} />
-          </div>
+        {/* Voltage Scheduler panel */}
+        <div className="bg-slate-900 border border-slate-700 rounded p-3 flex flex-col" style={{ minWidth: 340 }}>
+          {panelHeader("VOLTAGE SCHEDULER")}
+          <Schedule boxId={id} />
         </div>
+      </div>
+
+      {/* Graphs row */}
+      <div className="flex gap-2 flex-1 min-h-0">
+        {[
+          { label: "TEMPERATURE", graph: 0 },
+          { label: "VOLTAGE",     graph: 2 },
+          { label: "SENSORS",     graph: 1 },
+        ].map(({ label, graph }) => (
+          <div key={graph} className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded p-3 flex flex-col min-h-0">
+            {panelHeader(label)}
+            <div className="flex-1 min-h-0">
+              <DataGraph id={id} whichGraph={graph} />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -8,7 +8,7 @@ ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement, Title, T
 
 interface GraphProps {
   id: number;
-  whichGraph: number, // 0 is for ambientAverage, 1 for sensors
+  whichGraph: number, // 0 is for ambientAverage, 1 for sensors, 2 for voltage
 }
 
 interface GraphData {
@@ -69,7 +69,6 @@ function datagraph({ id, whichGraph }: GraphProps) {
         pointRadius: 2,
         fill: true,
         tension: 0.3,
-        yAxisID: 'y', // Temperature axis
       },
       {
         label: 'Ambient Temperature (°F)',
@@ -79,18 +78,30 @@ function datagraph({ id, whichGraph }: GraphProps) {
         pointRadius: 2,
         fill: true,
         tension: 0.3,
-        yAxisID: 'y', // Temperature axis
       },
+    ],
+  };
+
+  const voltageChart = {
+    labels: data.map(d => {
+      const date = new Date(d.timestamp * 1000);
+      return date.toLocaleTimeString('en-US', {
+        timeZone: 'America/Los_Angeles',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    }),
+    datasets: [
       {
         label: 'Voltage (V)',
         data: data.map(d => d.voltage),
-        borderColor: 'rgb(255, 206, 86)', // Yellow
+        borderColor: 'rgb(255, 206, 86)',
         backgroundColor: 'rgba(255, 206, 86, 0.2)',
         pointRadius: 2,
         fill: true,
         tension: 0.3,
-        yAxisID: 'y1', // Voltage axis (secondary)
-      }
+      },
     ],
   };
 
@@ -144,59 +155,31 @@ function datagraph({ id, whichGraph }: GraphProps) {
     ],
   };
 
-  // Chart options with dual y-axes
-  const temperatureVoltageOptions = {
+  const darkScale = {
+    grid: { color: "rgba(30, 41, 59, 1)" },
+    ticks: { color: "rgba(100, 116, 139, 1)", font: { family: "monospace", size: 10 } },
+    border: { color: "rgba(51, 65, 85, 1)" },
+  };
+
+  const commonOptions = {
     responsive: true,
-    interaction: {
-      mode: 'index' as const,
-      intersect: false,
-    },
+    maintainAspectRatio: false,
     plugins: {
-      legend: { display: true },
-      title: { display: true, text: 'Temperature and Voltage Over Time' },
+      legend: {
+        display: true,
+        labels: { color: "rgba(148, 163, 184, 1)", font: { family: "monospace", size: 10 }, boxWidth: 12 },
+      },
+      title: { display: false },
     },
     scales: {
-      x: { 
-        title: { display: true, text: 'Time' } 
-      },
-      y: {
-        type: 'linear' as const,
-        display: true,
-        position: 'left' as const,
-        title: { 
-          display: true, 
-          text: 'Temperature (°F)' 
-        },
-        beginAtZero: false,
-      },
-      y1: {
-        type: 'linear' as const,
-        display: true,
-        position: 'right' as const,
-        title: { 
-          display: true, 
-          text: 'Voltage (V)' 
-        },
-        beginAtZero: false,
-        grid: {
-          drawOnChartArea: false, // Only want the grid lines for one axis
-        },
-      },
+      x: { ...darkScale, title: { display: false } },
+      y: { ...darkScale, beginAtZero: false, title: { display: false } },
     },
   };
 
-  // Chart options for sensor chart
-  const sensorOptions = {
-    responsive: true,
-    plugins: {
-      legend: { display: true },
-      title: { display: true, text: 'Temperature Over Time' },
-    },
-    scales: {
-      x: { title: { display: true, text: 'Time' } },
-      y: { title: { display: true, text: 'Temperature (°F)' }, beginAtZero: false },
-    },
-  };
+  const temperatureOptions = { ...commonOptions };
+  const voltageOptions = { ...commonOptions };
+  const sensorOptions = { ...commonOptions };
 
   useEffect(() => {
     fetchAPI();
@@ -209,39 +192,31 @@ function datagraph({ id, whichGraph }: GraphProps) {
   }, [timeScale, id]);
 
   return (
-    <div className="flex flex-col items-center">
-      {whichGraph ? (
-        <Line data={sensorChart} options={sensorOptions} />
-      ) : (
-        <Line data={averageAndambient} options={temperatureVoltageOptions} />
-      )}
-      <div className="mt-4 flex justify-center space-x-4">
-        <button
-          onClick={() => setTimeScale(30)}
-          className={`px-4 py-2 rounded-md ${timeScale === 30 ? "bg-blue-600 text-white" : "bg-gray-700 text-white"
-            }`}
-        >
-          30 Min
-        </button>
-        <button
-          onClick={() => setTimeScale(720)}
-          className={`px-4 py-2 rounded-md ${timeScale === 720 ? "bg-blue-600 text-white" : "bg-gray-700 text-white"
-            }`}
-        >
-          12 Hr
-        </button>
-        <button
-          onClick={() => setTimeScale(1440)}
-          className={`px-4 py-2 rounded-md ${timeScale === 1440 ? "bg-blue-600 text-white" : "bg-gray-700 text-white"
-            }`}
-        >
-          24 Hr
-        </button>
+    <div className="flex flex-col h-full">
+      <div className="flex-1 min-h-0">
+        {whichGraph === 1 ? (
+          <Line data={sensorChart} options={sensorOptions} />
+        ) : whichGraph === 2 ? (
+          <Line data={voltageChart} options={voltageOptions} />
+        ) : (
+          <Line data={averageAndambient} options={temperatureOptions} />
+        )}
+      </div>
+      <div className="mt-2 flex justify-center gap-1 flex-shrink-0">
+        {[{ label: "30M", value: 30 }, { label: "12H", value: 720 }, { label: "24H", value: 1440 }].map(({ label, value }) => (
+          <button
+            key={value}
+            onClick={() => setTimeScale(value)}
+            className={`px-3 py-1 rounded text-xs font-mono transition-colors ${timeScale === value ? "bg-cyan-800 text-cyan-200 border border-cyan-600" : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700"}`}
+          >
+            {label}
+          </button>
+        ))}
         <input
           type="text"
-          placeholder="Enter Min"
+          placeholder="MIN"
           onChange={(e) => setTimeScale(Number(e.target.value))}
-          className="px-4 py-2 bg-gray-700 text-white rounded-md placeholder-gray-300 w-26 text-center"
+          className="px-2 py-1 bg-slate-800 text-white rounded text-xs font-mono placeholder-slate-600 w-14 text-center border border-slate-700"
         />
       </div>
     </div>
