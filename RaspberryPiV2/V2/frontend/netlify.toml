@@ -1,0 +1,4 @@
+[build]
+  base    = "RaspberryPiV2/V2/frontend"
+  command = "npm run build"
+  publish = "dist"
