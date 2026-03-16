@@ -69,7 +69,7 @@ def delete_schedule(schedule_id):
 
 def getDBConnection():
     conn = psycopg2.connect(
-        host="localhost",
+        host=os.environ.get('DB_HOST', 'localhost'),
         database="potatodb",
         user=os.environ['DB_USERNAME'],
         password=os.environ['DB_PASSWORD'],

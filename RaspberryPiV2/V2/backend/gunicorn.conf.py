@@ -1,3 +1,2 @@
 workers = 1
-bind = "unix:potato.sock"
-umask = 0o007
+bind = "0.0.0.0:5000"

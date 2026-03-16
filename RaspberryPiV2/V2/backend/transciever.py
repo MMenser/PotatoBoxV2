@@ -14,7 +14,7 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
-        logging.FileHandler("/home/mason/Desktop/PotatoBoxV2/RaspberryPiV2/V2/backend/transciever.log"),
+        logging.FileHandler("transciever.log"),
         logging.StreamHandler()
     ]
 )
@@ -34,7 +34,7 @@ ERROR_CODES = {
 
 def getDBConnection():
     conn = psycopg2.connect(
-        host="localhost",
+        host=os.environ.get('DB_HOST', 'localhost'),
         database="potatodb",
         user=os.environ['DB_USERNAME'],
         password=os.environ['DB_PASSWORD'],
