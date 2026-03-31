@@ -2,16 +2,22 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
+import threading
 import os
 import psycopg2
 from datetime import timezone
 import pytz
 from dotenv import load_dotenv
-from transciever import sendLoraMessage
+from transciever import sendLoraMessage, recieveData
 
 load_dotenv()
 app = Flask(__name__)
 cors = CORS(app, origins='*')
+
+
+def start_receiver_thread():
+    receiver_thread = threading.Thread(target=recieveData, daemon=True, name="lora-receiver")
+    receiver_thread.start()
 
 # --- Scheduler setup ---
 def check_schedules():
@@ -30,6 +36,7 @@ def check_schedules():
 scheduler = BackgroundScheduler()
 scheduler.add_job(check_schedules, 'interval', minutes=1)
 scheduler.start()
+start_receiver_thread()
 
 # --- Schedule routes ---
 @app.route("/schedules/<int:box_id>", methods=['GET'])

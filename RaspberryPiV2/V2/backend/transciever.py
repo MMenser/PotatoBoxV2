@@ -22,7 +22,8 @@ log = logging.getLogger(__name__)
 
 ser = serial.Serial('/dev/ttyS0', 9600, timeout=1)
 serial_lock = threading.Lock()
-boxIDtoLoraAddress = {1: 9, 2: 18, 3: 27, 4: 36}  # Box 1 is Lora Address 9
+boxIDtoLoraAddress = {1: 1, 2: 18, 3: 27, 4: 36}
+#NetworkId = 6
 # SD Lora address is 100
 # Need to check networkID for sd lora
 
