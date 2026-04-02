@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: potatodb
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DB_HOST: db
+    ports:
+      - "5000:5000"
+    devices:
+      - /dev/ttyS0:/dev/ttyS0
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  pgdata:
