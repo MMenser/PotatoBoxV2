@@ -1,0 +1,4 @@
+No sensors are calibrated
+
+LoRa communication works
+Driver needs current calibration
