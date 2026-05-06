@@ -3,5 +3,10 @@ Calibrate at boiling
 2: 95.25
 3: 94.15
 4: 94.15
-5: 114.60
 Ref: 98.7
+
+const float ambientOffsetC = 5.30;
+const float temp1OffsetC = 3.45;
+const float temp2OffsetC = 4.55;
+const float temp3OffsetC = 4.55;
+const float temp4OffsetC = -15.9;
