@@ -25,11 +25,11 @@ const unsigned long loraUpdateInterval = 60000;
 float ambient, temp1, temp2, temp3, temp4, averageInsideBox, maxSensor, minSensor, averageAmbient;
 float delta = 10.0;
 
-const float ambientOffsetC = 3.35;
-const float temp1OffsetC = -4.0;
-const float temp2OffsetC = -6.0;
-const float temp3OffsetC = -0.75;
-const float temp4OffsetC = -2.0;
+const float ambientOffsetC = -2.5;
+const float temp1OffsetC = -3.3;
+const float temp2OffsetC = 1.0;
+const float temp3OffsetC = 0.7;
+const float temp4OffsetC = 1.40;
 
 const int voltageSensor = A5; // Analog pin for reading voltage sensor
 const float ADC_MAX = 4095.0;

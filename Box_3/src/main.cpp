@@ -25,11 +25,11 @@ const unsigned long loraUpdateInterval = 60000;
 float ambient, temp1, temp2, temp3, temp4, averageInsideBox, maxSensor, minSensor, averageAmbient;
 float delta = 10.0;
 
-const float ambientOffsetC = 5.30;
+const float ambientOffsetC = 4.30;
 const float temp1OffsetC = 3.45;
-const float temp2OffsetC = 4.55;
-const float temp3OffsetC = 4.55;
-const float temp4OffsetC = -15.9;
+const float temp2OffsetC = 3.55;
+const float temp3OffsetC = 3.55;
+const float temp4OffsetC = 0.0;
 
 const int voltageSensor = A5; // Analog pin for reading voltage sensor
 const float ADC_MAX = 4095.0;
@@ -150,11 +150,11 @@ void loop()
   {
     lastUpdate = currentMillis; // Reset timer
 
-    ambient = 0.0;
+    ambient = calibrateTemp(sensor1.temperature(RNOMINAL, RREF), ambientOffsetC);
     temp1 = calibrateTemp(sensor2.temperature(RNOMINAL, RREF), temp1OffsetC);
     temp2 = calibrateTemp(sensor3.temperature(RNOMINAL, RREF), temp2OffsetC);
     temp3 = calibrateTemp(sensor4.temperature(RNOMINAL, RREF), temp3OffsetC);
-    temp4 = calibrateTemp(sensor1.temperature(RNOMINAL, RREF), ambientOffsetC);
+    temp4 = calibrateTemp(sensor5.temperature(RNOMINAL, RREF), temp4OffsetC);
     currentVoltage = getVariacVoltage();
     maxSensor = max(temp1, max(temp2, max(temp3, temp4)));
     minSensor = min(temp1, min(temp2, min(temp3, temp4)));
@@ -163,14 +163,14 @@ void loop()
 
     recentTemperatures.push(averageInsideBox);
     recentAmbients.push(ambient);
-    // if (recentTemperatures.size() == 5 && recentAmbients.size() == 5) { // Containers are full of data 
-    //   if (currentMillis - lastMaintainTemperature >= 120000
-    //     && currentMillis - lastChangeVoltage >= 240000) { 
-    //     // Only run maintainTemperature() every two minutes, unless voltage was changed less than 4 minutes ago then wait for temp changes.
-    //     lastMaintainTemperature = currentMillis;
-    //     maintainTemperature();
-    //   }
-    // }
+    if (recentTemperatures.size() == 5 && recentAmbients.size() == 5) { // Containers are full of data 
+      if (currentMillis - lastMaintainTemperature >= 60000 
+        && currentMillis - lastChangeVoltage >= 120000) { 
+        // Only run maintainTemperature() every minute, unless voltage was changed less than 2 minutes ago then wait for temp changes.
+        lastMaintainTemperature = currentMillis;
+        maintainTemperature();
+      }
+    }
 
     printTemps();
   }
@@ -193,7 +193,6 @@ float calibrateTemp(float raw, float offsetC) {
 
   return (calibratedCelsius * 9.0 / 5.0) + 32.0;
 }
-
 
 
 void recieveLoraMessage() {
@@ -225,7 +224,6 @@ void recieveLoraMessage() {
 
   return;
 }
-
 
 void sendLoraError(int errorCode)
 {
@@ -266,9 +264,15 @@ void sendLoraData()
 
 int maintainTemperature()
 {
+  // Preconditions: recentTemperatures is full
+  // First, check if the temperature is constant at the given voltage
+  // We'll allow a 0.75 F difference in range as constant
   float minElement = recentTemperatures.min();
   float maxElement = recentTemperatures.max();
   float range = recentTemperatures.range();
+  // Serial.print("Recent Max Average: "); Serial.println(maxElement);
+  // Serial.print("Recent Min Average: "); Serial.println(minElement);
+  // Serial.print("Range between 5 most recent temp average: "); Serial.println(range);
 
   averageAmbient = recentAmbients.average();
   float currentAverage = recentTemperatures.back(); // Get most recent average

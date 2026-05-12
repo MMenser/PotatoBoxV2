@@ -15,10 +15,9 @@ void runMotor(int steps = 25);
 float calibrateTemp(float raw, float offsetC);
 float getVariacVoltage(int samples = 5);
 void sendLoraData();
-void sendLoraError(int errorCode);
 void printTemps();
 
-#define boxID 2
+#define boxID 4 // Must change for each box
 #define dirPin 2
 #define stepPin 3
 #define sleepPin 4
