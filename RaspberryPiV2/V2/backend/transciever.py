@@ -41,25 +41,6 @@ def getDBConnection():
         connect_timeout=5)
     return conn
 
-def pushToThingSpeak(boxId, avgT, ambientT, delta, currentV, s1, s2, s3, s4):
-    try:
-        api_key = ''
-        match boxId:
-            case '1':
-                api_key = os.getenv("THINGSPEAK_API_WRITE_KEY1")
-            case '2':
-                api_key = os.getenv("THINGSPEAK_API_WRITE_KEY2")
-            case '3':
-                api_key = os.getenv("THINGSPEAK_API_WRITE_KEY3")
-            case '4':
-                api_key = os.getenv("THINGSPEAK_API_WRITE_KEY4")
-        url = f"https://api.thingspeak.com/update.json?api_key={api_key}&field1={avgT}&field2={ambientT}&field3={delta}&field4={currentV}&field5={s1}&field6={s2}&field7={s3}&field8={s4}"
-        response = requests.get(url, timeout=10)
-        if response.status_code != 200:
-            log.error(f"ThingSpeak error: {response.status_code} - {response.text}")
-    except Exception as e:
-        log.error(f"Failed to send to ThingSpeak: {e}")
-
 def handleError(boxID, errorCode):
     description = ERROR_CODES.get(errorCode, f"Unknown error code {errorCode}")
     log.error(f"[RX] Error from box {boxID}: [{errorCode}] {description}")
@@ -112,7 +93,6 @@ def recieveData():
 
             log.info(f"[RX] Box {boxID} | avg={avgT} ambient={ambientT} delta={delta} voltage={currentV} sensors=[{sensor1},{sensor2},{sensor3},{sensor4}]")
             addData(boxID, avgT, ambientT, delta, currentV, sensor1, sensor2, sensor3, sensor4)
-            pushToThingSpeak(boxID, avgT, ambientT, delta, currentV, sensor1, sensor2, sensor3, sensor4)
         except Exception as e:
             log.exception(f"Error processing message: {e}")
 
