@@ -12,7 +12,7 @@ void changeVoltage(bool increase, float changeTarget);
 int maintainTemperature();
 void recieveLoraMessage();
 void runMotor(int steps = 25);
-float calibrateTemp(float raw, float rawHigh, float rawLow);
+float calibrateTemp(float raw, float offsetC);
 float getVariacVoltage(int samples = 5);
 void sendLoraData();
 void sendLoraError(int errorCode);

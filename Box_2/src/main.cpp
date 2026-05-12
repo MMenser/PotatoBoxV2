@@ -25,8 +25,11 @@ const unsigned long loraUpdateInterval = 60000;
 float ambient, temp1, temp2, temp3, temp4, averageInsideBox, maxSensor, minSensor, averageAmbient;
 float delta = 10.0;
 
-const float refHigh = 93.5;
-const float refLow = 4.0;
+const float ambientOffsetC = 3.35;
+const float temp1OffsetC = -4.0;
+const float temp2OffsetC = -6.0;
+const float temp3OffsetC = -0.75;
+const float temp4OffsetC = -2.0;
 
 const int voltageSensor = A5; // Analog pin for reading voltage sensor
 const float ADC_MAX = 4095.0;
@@ -37,6 +40,9 @@ const float FINAL_SLOPE  = 2.6367;   // scale
 const float FINAL_OFFSET = 4.06;     // volts
 const unsigned int NUM_SAMPLES = 500;     // enough for several 50/60 Hz cycles
 const unsigned int SAMPLE_DELAY_US = 200; // ~100 kHz sampling
+const float MIN_VOLTAGE_STEP = 1.0;
+const int MAX_VOLTAGE_ADJUST_ATTEMPTS = 20;
+const int MAX_STALLED_ATTEMPTS = 3;
 
 
 void setup()
@@ -143,11 +149,11 @@ void loop()
   {
     lastUpdate = currentMillis; // Reset timer
 
-    ambient = calibrateTemp(sensor1.temperature(RNOMINAL, RREF), 94.93, 1.80);
-    temp1 = calibrateTemp(sensor2.temperature(RNOMINAL, RREF), 94.0, 5.5);
-    temp2 = calibrateTemp(sensor3.temperature(RNOMINAL, RREF), 96.5, 7.8);
-    temp3 = calibrateTemp(sensor4.temperature(RNOMINAL, RREF), 91.8, 2.9);
-    temp4 = calibrateTemp(sensor5.temperature(RNOMINAL, RREF), 93.6, 5.2);  
+    ambient = calibrateTemp(sensor1.temperature(RNOMINAL, RREF), ambientOffsetC);
+    temp1 = calibrateTemp(sensor2.temperature(RNOMINAL, RREF), temp1OffsetC);
+    temp2 = calibrateTemp(sensor3.temperature(RNOMINAL, RREF), temp2OffsetC);
+    temp3 = calibrateTemp(sensor4.temperature(RNOMINAL, RREF), temp3OffsetC);
+    temp4 = calibrateTemp(sensor5.temperature(RNOMINAL, RREF), temp4OffsetC);
     currentVoltage = getVariacVoltage();
     maxSensor = max(temp1, max(temp2, max(temp3, temp4)));
     minSensor = min(temp1, min(temp2, min(temp3, temp4)));
@@ -157,9 +163,9 @@ void loop()
     recentTemperatures.push(averageInsideBox);
     recentAmbients.push(ambient);
     if (recentTemperatures.size() == 5 && recentAmbients.size() == 5) { // Containers are full of data 
-      if (currentMillis - lastMaintainTemperature >= 120000
-        && currentMillis - lastChangeVoltage >= 240000) { 
-        // Only run maintainTemperature() every two minutes, unless voltage was changed less than 4 minutes ago then wait for temp changes.
+      if (currentMillis - lastMaintainTemperature >= 60000 
+        && currentMillis - lastChangeVoltage >= 120000) { 
+        // Only run maintainTemperature() every minute, unless voltage was changed less than 2 minutes ago then wait for temp changes.
         lastMaintainTemperature = currentMillis;
         maintainTemperature();
       }
@@ -179,22 +185,13 @@ void loop()
   delay(100);
 }
 
-float calibrateTemp(float raw, float rawHigh, float rawLow) {
-  // 1. Calculate the 'Span' of raw readings
-  float rawSpan = rawHigh - rawLow;
-  
-  // 2. Calculate the 'Span' of known reference temperatures
-  float refSpan = refHigh - refLow;
+float calibrateTemp(float raw, float offsetC) {
+  // Single-point calibration: shift the raw Celsius reading by the
+  // measured probe-specific offset from the boiling-water reference.
+  float calibratedCelsius = raw + offsetC;
 
-  if (rawSpan == 0) return 0.0; // Error handling
-
-  // 3. Map the raw value into the reference range
-  float calibratedCelsius = refLow + ((raw - rawLow) * refSpan) / rawSpan;
-
-  // 4. Convert to Fahrenheit
   return (calibratedCelsius * 9.0 / 5.0) + 32.0;
 }
-
 
 
 void recieveLoraMessage() {
@@ -226,7 +223,6 @@ void recieveLoraMessage() {
 
   return;
 }
-
 
 void sendLoraError(int errorCode)
 {
@@ -267,9 +263,15 @@ void sendLoraData()
 
 int maintainTemperature()
 {
+  // Preconditions: recentTemperatures is full
+  // First, check if the temperature is constant at the given voltage
+  // We'll allow a 0.75 F difference in range as constant
   float minElement = recentTemperatures.min();
   float maxElement = recentTemperatures.max();
   float range = recentTemperatures.range();
+  // Serial.print("Recent Max Average: "); Serial.println(maxElement);
+  // Serial.print("Recent Min Average: "); Serial.println(minElement);
+  // Serial.print("Range between 5 most recent temp average: "); Serial.println(range);
 
   averageAmbient = recentAmbients.average();
   float currentAverage = recentTemperatures.back(); // Get most recent average
@@ -308,9 +310,11 @@ void runMotor(int steps)
 }
 
 void changeVoltage(bool increase, float changeMagnitude)  {
-  float targetVoltage = increase ? currentVoltage + changeMagnitude * 3 : currentVoltage - changeMagnitude * 3; // 1 F * 5 = 5V change for 1 degree
+  float targetVoltage = increase ? currentVoltage + changeMagnitude * 5 : currentVoltage - changeMagnitude * 5; // 1 F * 5 = 5V change for 1 degree
   Serial.print("Target Voltage: "); Serial.println(targetVoltage);
   currentVoltage = getVariacVoltage();
+  int attempts = 0;
+  int stalledAttempts = 0;
   if (increase) {
         if (currentVoltage > 115) {
           Serial.println("Max voltage reached. Cannot increase more.");
@@ -319,34 +323,61 @@ void changeVoltage(bool increase, float changeMagnitude)  {
         digitalWrite(dirPin, LOW);
         while (currentVoltage < targetVoltage)
         {
+          if (attempts++ >= MAX_VOLTAGE_ADJUST_ATTEMPTS) {
+            Serial.println("Voltage adjustment timed out. Returning to main loop.");
+            return;
+          }
+
           float before = currentVoltage;
           runMotor(15);
           float after = getVariacVoltage();
-          if (abs(after - before) < 1 ) {
+          float voltageStep = abs(after - before);
+          if (voltageStep < MIN_VOLTAGE_STEP) {
+            stalledAttempts++;
+          }
+          else {
+            stalledAttempts = 0;
+          }
+
+          if (stalledAttempts >= MAX_STALLED_ATTEMPTS) {
             Serial.println("Motor not turning effectively. Returning to main loop.");
             sendLoraError(ERR_MOTOR_STALL);
             return;
           }
-          currentVoltage = getVariacVoltage();
+          currentVoltage = after;
         }
         lastChangeVoltage = millis();
   }
   else {
         if (currentVoltage < 5) {
           Serial.println("Min voltage reached. Cannot decrease more.");
+          return;
         }
         digitalWrite(dirPin, HIGH); // Set direction to decrease voltage
         while (currentVoltage > targetVoltage)
         {
+          if (attempts++ >= MAX_VOLTAGE_ADJUST_ATTEMPTS) {
+            Serial.println("Voltage adjustment timed out. Returning to main loop.");
+            return;
+          }
+
           float before = currentVoltage;
           runMotor(15);
           float after = getVariacVoltage();
-          if (abs(after - before) < 1 ) {
+          float voltageStep = abs(after - before);
+          if (voltageStep < MIN_VOLTAGE_STEP) {
+            stalledAttempts++;
+          }
+          else {
+            stalledAttempts = 0;
+          }
+
+          if (stalledAttempts >= MAX_STALLED_ATTEMPTS) {
             Serial.println("Motor not turning effectively. Returning to main loop.");
             sendLoraError(ERR_MOTOR_STALL);
             return;
           }
-          currentVoltage = getVariacVoltage();
+          currentVoltage = after;
         }
         lastChangeVoltage = millis();
   }

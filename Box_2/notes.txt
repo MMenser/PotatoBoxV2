@@ -1,0 +1,15 @@
+At boiling
+Ref: 97.5
+1: 94.15
+2: 94.50
+3: 99.90
+4: 98.25
+5: 99.50
+
+Round Two
+Ref: 97.9
+Sensor 1: 95.44
+Sensor 2: 98.90
+Sensor 3: 99.84
+Sensor 4: 97.28
+Sensor 5: 97.79
