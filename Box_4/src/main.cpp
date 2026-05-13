@@ -13,6 +13,12 @@ TemperatureContainer recentTemperatures(5);
 TemperatureContainer recentAmbients(5);
 float target = 0.0;
 
+const char* WIFI_SSID         = "Mason’s iPhone";
+const char* WIFI_PASSWORD     = "88888888";
+const char* THINGSPEAK_API_KEY = "JGP4Q1WB93VXL323";
+const char* TS_HOST           = "api.thingspeak.com";
+WiFiClient tsClient;
+
 unsigned long lastUpdate = 0; 
 unsigned long lastMaintainTemperature = 0;
 
@@ -44,6 +50,34 @@ const float MIN_VOLTAGE_STEP = 1.0;
 const int MAX_VOLTAGE_ADJUST_ATTEMPTS = 20;
 const int MAX_STALLED_ATTEMPTS = 3;
 
+enum WiFiState { WIFI_IDLE, WIFI_CONNECTING };
+WiFiState wifiState = WIFI_IDLE;
+unsigned long wifiRetryAt = 0;
+const unsigned long WIFI_RETRY_INTERVAL = 30000;
+
+void wifiTick() {
+  switch (wifiState) {
+    case WIFI_IDLE:
+      if (WiFi.status() != WL_CONNECTED && millis() >= wifiRetryAt) {
+        Serial.println("[WiFi] Starting connection attempt...");
+        WiFi.end();
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+        wifiState = WIFI_CONNECTING;
+        wifiRetryAt = millis() + WIFI_RETRY_INTERVAL;
+      }
+      break;
+    case WIFI_CONNECTING:
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("[WiFi] Connected: " + WiFi.localIP().toString());
+        wifiState = WIFI_IDLE;
+      } else if (millis() >= wifiRetryAt) {
+        Serial.println("[WiFi] Timed out. Will retry.");
+        WiFi.end();
+        wifiState = WIFI_IDLE;
+      }
+      break;
+  }
+}
 
 void setup()
 {
@@ -64,6 +98,19 @@ void setup()
   lora.setTimeout(500);
 
   currentVoltage = getVariacVoltage();
+
+  // WiFi init
+  WiFi.end();
+  delay(3000);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
+    delay(500); attempts++;
+  }
+  if (WiFi.status() == WL_CONNECTED)
+    Serial.println("[WiFi] Connected: " + WiFi.localIP().toString());
+  else
+    Serial.println("[WiFi] Not connected — will retry on first send.");
 }
 
 float getVariacVoltage(int samples)
@@ -143,6 +190,7 @@ void printTemps()
 
 void loop()
 {
+  wifiTick();
   unsigned long currentMillis = millis();
   // // Update sensor data every 15 seconds
   if (currentMillis - lastUpdate >= updateInterval)
@@ -176,6 +224,7 @@ void loop()
 
   if (currentMillis - lastLoraMessage >= loraUpdateInterval) { // Every 1 minute
     sendLoraData();
+    sendToThingSpeak();
     lastLoraMessage = currentMillis;
   }
   
@@ -259,6 +308,58 @@ void sendLoraData()
   Serial.print("Sending: "); Serial.println(loraCommand);
   lora.println(loraCommand);
   delay(100);
+}
+
+// Call this at the same time as sendLoraData().
+// If WiFi isn't up it returns instantly — LoRa path is unaffected.
+// If WiFi is up the TCP connect is ~200-500ms, which is acceptable since
+// this only runs every 60s alongside the already-slow LoRa send.
+void sendToThingSpeak() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[ThingSpeak] WiFi not connected — skipping, LoRa still sent.");
+    return;  // ← instant return, no blocking
+  }
+ 
+  if (!tsClient.connect(TS_HOST, 80)) {
+    Serial.println("[ThingSpeak] Cannot reach server — skipping.");
+    return;
+  }
+ 
+  // Uses your existing globals directly — same values sendLoraData() sends
+  String query = "api_key=";
+  query += THINGSPEAK_API_KEY;
+  query += "&field1=" + String(averageInsideBox, 2);
+  query += "&field2=" + String(averageAmbient,   2);
+  query += "&field3=" + String(delta,            2);
+  query += "&field4=" + String(currentVoltage,   2);
+  query += "&field5=" + String(temp1,            2);
+  query += "&field6=" + String(temp2,            2);
+  query += "&field7=" + String(temp3,            2);
+  query += "&field8=" + String(temp4,            2);
+ 
+  tsClient.print("GET /update?");
+  tsClient.print(query);
+  tsClient.println(" HTTP/1.1");
+  tsClient.println("Host: api.thingspeak.com");
+  tsClient.println("Connection: close");
+  tsClient.println();
+ 
+  // Short timeout — if server doesn't respond in 2s, bail out
+  // 2s is safe here since we're inside the 60s LoRa block already
+  unsigned long timeout = millis();
+  while (!tsClient.available() && millis() - timeout < 2000) {
+    // intentionally empty — this is the only remaining brief block
+    // but it's bounded to 2s max, only runs every 60s
+  }
+ 
+  if (tsClient.available()) {
+    String statusLine = tsClient.readStringUntil('\n');
+    Serial.println("[ThingSpeak] Response: " + statusLine);
+  } else {
+    Serial.println("[ThingSpeak] No response within 2s.");
+  }
+ 
+  tsClient.stop();
 }
 
 int maintainTemperature()

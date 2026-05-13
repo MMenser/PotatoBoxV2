@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <WiFiS3.h>
 #include "temperature_container.cpp"
 using namespace std;
 
@@ -16,6 +17,7 @@ float calibrateTemp(float raw, float offsetC);
 float getVariacVoltage(int samples = 5);
 void sendLoraData();
 void printTemps();
+void sendToThingSpeak();
 
 #define boxID 3
 #define dirPin 2
