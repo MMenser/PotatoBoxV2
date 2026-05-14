@@ -13,8 +13,8 @@ TemperatureContainer recentTemperatures(5);
 TemperatureContainer recentAmbients(5);
 float target = 0.0;
 
-const char* WIFI_SSID         = "Mason’s iPhone";
-const char* WIFI_PASSWORD     = "88888888";
+const char* WIFI_SSID         = "WSU Othello Farm";
+const char* WIFI_PASSWORD     = "WSU12345!";
 const char* THINGSPEAK_API_KEY = "P0GOP2B0N0J44KC4";
 const char* TS_HOST           = "api.thingspeak.com";
 WiFiClient tsClient;
